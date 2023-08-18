@@ -27,5 +27,5 @@ func GetIntermediateFileName(taskId string, reduceIndex int, mapIndex int) strin
 
 // GetOutputFileName 获取最终的输出文件名称
 func GetOutputFileName(taskId string, reduceIndex int) string {
-	return fmt.Sprintf("%soutput-%d", taskId, reduceIndex)
+	return fmt.Sprintf("%s-output-%d", taskId, reduceIndex)
 }

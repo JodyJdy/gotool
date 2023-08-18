@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	MasterAddress := "127.0.0.1:1234"
+	MasterAddress := ":8888"
 	MasterExposeRpcName := "Master"
 	client, _ := rpc.Dial("tcp", MasterAddress)
 	rpcClient := base.RpcClient{
@@ -26,10 +26,6 @@ func main() {
 			},
 			{
 				FileName: "b.txt",
-				NodeName: "master",
-			},
-			{
-				FileName: "c.txt",
 				NodeName: "master",
 			},
 		},

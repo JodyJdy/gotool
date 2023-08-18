@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"reflect"
 )
 
 type Value any
@@ -12,6 +13,10 @@ type Value any
 type Pair struct {
 	Key string
 	Val Value
+}
+
+func (p Pair) Val2Str() string {
+	return reflect.ValueOf(p.Val).Interface().(string)
 }
 
 // 计算HashCode
@@ -34,7 +39,7 @@ type BytesPairSource struct {
 func (f *BytesPairSource) ReadPair() Pair {
 	return Pair{
 		Key: f.fileName,
-		Val: f.contents,
+		Val: string(f.contents),
 	}
 }
 
@@ -141,4 +146,8 @@ func (w *WorkerRpcClient) ShutDown(_, _ *struct{}) error {
 func (w *WorkerRpcClient) MapTask(args MapTaskArgs) error {
 	client := w.RpcClient
 	return client.Call(client.Target+".MapTask", args, new(struct{}))
+}
+func (w *WorkerRpcClient) ReduceTask(args ReduceTaskArgs) error {
+	client := w.RpcClient
+	return client.Call(client.Target+".ReduceTask", args, new(struct{}))
 }

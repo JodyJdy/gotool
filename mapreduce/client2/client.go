@@ -8,9 +8,9 @@ import (
 
 func main() {
 	worker := base.Worker{
-		Name:                "worker1",
+		Name:                "worker2",
 		MasterAddress:       ":8888",
-		WorkerAddress:       ":8848",
+		WorkerAddress:       ":8858",
 		MasterExposeRpcName: "Master",
 		WorkerExposeRpcName: "Client",
 	}

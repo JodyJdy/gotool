@@ -2,6 +2,7 @@ go 1.20
 
 use (
 	client
+	client2
 	base
 	server
 	tasksender

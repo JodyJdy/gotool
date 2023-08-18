@@ -10,7 +10,7 @@ func main() {
 
 	// 初始化 master结构
 	master := base.Master{
-		Address:       "127.0.0.1:1234",
+		Address:       ":8888",
 		Workers:       []base.Worker{},
 		FileOperate:   base.FileOperate{},
 		ExposeRpcName: "Master",
