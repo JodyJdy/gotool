@@ -7,6 +7,7 @@ import (
 	"unicode"
 )
 
+// MapFunc 词频统计 map reduce 代码
 func MapFunc(pair Pair) (res []Pair) {
 	value := pair.Val2Str()
 	f := func(c rune) bool {
