@@ -43,6 +43,9 @@ type Raft struct {
 	NextIndex []int
 	// 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
 	MatchIndex []int
+
+	// 表名当前所处角色的行为
+	Action func(r *Raft)
 }
 
 // AppendEntriesRequest 追加条目Rpc调用请求体

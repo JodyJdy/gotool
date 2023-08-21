@@ -23,3 +23,18 @@ func (r *Raft) SendAppendEntries(request AppendEntriesRequest) (*AppendEntriesRe
 	client := RaftRpcClient{}
 	return result, client.AppendEntries(request, result)
 }
+
+// Leader 职责
+func Leader(r *Raft) {
+
+}
+
+// Follower 追随者职责
+func Follower(r *Raft) {
+
+}
+
+// Candidate 候选者职责
+func Candidate(r *Raft) {
+
+}
