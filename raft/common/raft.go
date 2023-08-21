@@ -1,5 +1,7 @@
 package common
 
+import "fmt"
+
 // RequestVote 接收到RequeVote请求
 func (r *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteResponse) error {
 	return nil
@@ -24,9 +26,18 @@ func (r *Raft) SendAppendEntries(request AppendEntriesRequest) (*AppendEntriesRe
 	return result, client.AppendEntries(request, result)
 }
 
+// LeaderFirst 第一次选取为Leader时执行的行为
+func LeaderFirst(r *Raft) {
+	fmt.Println("leader first")
+	// 做一些初始操作
+	// xxxxxx
+	// 之后设置 Leader函数 为 节点的行为
+	r.Action = Leader
+}
+
 // Leader 职责
 func Leader(r *Raft) {
-
+	fmt.Println("leader ")
 }
 
 // Follower 追随者职责
