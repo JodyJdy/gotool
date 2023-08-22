@@ -85,7 +85,7 @@ func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntr
 	// 如果已经超过了当前节点最大的索引，需要调整，这样下次，服务端就会发送正常的数据
 	if request.PrevLogIndex > rf.getLastIndex() {
 		response.NextIndex = rf.getLastIndex() + 1
-		fmt.Printf("直接结束: %d \n", response.NextIndex)
+		fmt.Printf("直接结束: %d %d \n", request.PrevLogIndex, response.NextIndex)
 		return nil
 	}
 	// 2. 返回假 如果接收者日志中没有包含这样一个条目 即该条目的任期在 prevLogIndex 上能和 prevLogTerm 匹配上

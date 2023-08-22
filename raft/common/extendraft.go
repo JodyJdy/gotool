@@ -19,7 +19,7 @@ func (r *Raft) AppendLog(logCommand LogCommand, reply *struct{}) error {
 	r.Logs = append(r.Logs, LogEntry{
 		r.getLastIndex() + 1, r.CurrentTerm, logCommand,
 	})
-	fmt.Println("追加日志")
+	fmt.Println("Append 追加日志")
 	r.Lock.Unlock()
 	return nil
 }
