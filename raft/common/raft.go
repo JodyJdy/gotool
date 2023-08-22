@@ -319,9 +319,6 @@ func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest) {
 
 	// 调整为 Follower
 	if reply.Term > rf.CurrentTerm {
-		fmt.Println("切换为 Follower sendAppendEntries")
-		fmt.Println(reply.Term)
-		fmt.Println(rf.CurrentTerm)
 		rf.Lock.Lock()
 		rf.CurrentTerm = reply.Term
 		rf.VotedFor = -1
