@@ -1,5 +1,10 @@
 package common
 
+import (
+	"sync"
+	"sync/atomic"
+)
+
 // NodeState 枚举 节点状态
 type NodeState int
 
@@ -20,7 +25,7 @@ type LogEntry struct {
 	LogCommand interface{}
 }
 type Raft struct {
-
+	Id int
 	// 节点状态
 	State NodeState
 
@@ -44,8 +49,20 @@ type Raft struct {
 	// 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
 	MatchIndex []int
 
-	// 表名当前所处角色的行为
+	// 表明当前所处角色的行为
 	Action func(r *Raft)
+
+	// 其他节点 节点下标->Client的映射
+	Peers sync.Map
+	// 监听地址
+	Address string
+	// 其他节点地址
+	OtherNodeAddress []string
+	// 投票数
+	VoteCount atomic.Int32
+
+	// 更改/获取 Raft状态的锁
+	Lock sync.Mutex
 }
 
 // AppendEntriesRequest 追加条目Rpc调用请求体
@@ -90,5 +107,5 @@ type RequestVoteResponse struct {
 	//当前任期号，以便于候选人去更新自己的任期号
 	Term int
 	//候选人赢得了此张选票时为真
-	VoteGranted int
+	VoteGranted bool
 }
