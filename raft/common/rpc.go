@@ -8,6 +8,8 @@ type RaftRpc interface {
 	RequestVote(request RequestVoteRequest, response *RequestVoteResponse) error
 	// AppendEntries 追加条目
 	AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error
+
+	AppendLog(LogCommand interface{}, reply *struct{}) error
 }
 
 type RaftRpcClient struct {
@@ -21,4 +23,7 @@ func (c RaftRpcClient) RequestVote(request RequestVoteRequest, response *Request
 }
 func (c RaftRpcClient) AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error {
 	return c.Client.Call(c.Target+".AppendEntries", request, response)
+}
+func (c RaftRpcClient) AppendLog(logCommand LogCommand, reply *struct{}) error {
+	return c.Client.Call(c.Target+".AppendLog", logCommand, reply)
 }

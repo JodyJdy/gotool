@@ -14,7 +14,7 @@ func main() {
 	raft.StartMainLoop()
 }
 func initAddress(r *common.Raft, index int) {
-	allAddress := []string{":1234", ":1235", ":1236", ":1237", ":1238"}
+	allAddress := []string{":1234", ":1235", ":1236"}
 	var otherAddress []string
 	for i, v := range allAddress {
 		if i != index {

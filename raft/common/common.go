@@ -49,6 +49,9 @@ type Raft struct {
 	// 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
 	MatchIndex []int
 
+	// 如果是Follower 用于记录当前的LeaderId
+	LeaderId int
+
 	// 表明当前所处角色的行为
 	Action func(r *Raft)
 
@@ -88,6 +91,8 @@ type AppendEntriesResponse struct {
 	Term int
 	//如果跟随者所含有的条目和 prevLogIndex 以及 prevLogTerm 匹配上了，则为 true
 	Success bool
+	// 将 NextIndex 进行返回
+	NextIndex int
 }
 
 // RequestVoteRequest 请求投票RPC请求体
