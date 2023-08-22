@@ -55,6 +55,9 @@ type Raft struct {
 	// 表明当前所处角色的行为
 	Action func(r *Raft)
 
+	// 将Log运用到状态机
+	ApplyLogFunc func(r *Raft, logEntry LogEntry)
+
 	// 其他节点 节点下标->Client的映射
 	Peers sync.Map
 	// 监听地址

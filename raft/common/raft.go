@@ -20,7 +20,6 @@ func (rf *Raft) getLastTerm() int {
 
 // RequestVote 接收到RequestVote请求
 func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteResponse) error {
-
 	rf.Lock.Lock()
 	defer rf.Lock.Unlock()
 	// 1. 如果term < currentTerm返回 false
@@ -32,7 +31,6 @@ func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteRes
 
 	// 如果请求方 的任期 比自己大， 将自己切换为 Follower
 	if request.Term > rf.CurrentTerm {
-		fmt.Println("切换为Follower  RequestVote")
 		rf.CurrentTerm = request.Term
 		rf.SetAction(Follower, FOLLOWER)
 		rf.VotedFor = -1
@@ -52,7 +50,6 @@ func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteRes
 	//2. 如果 votedFor 为空或者为 candidateId，并且候选人的日志至少和自己一样新，那么就投票给他
 	if (rf.VotedFor == -1 || rf.VotedFor == request.CandidateId) && uptoDate {
 		receivedVote.Store(true)
-		fmt.Println("切换为Follower  RequestVote")
 		rf.SetAction(Follower, FOLLOWER)
 		// 投票给请求方
 		response.VoteGranted = true
@@ -64,6 +61,7 @@ func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteRes
 // AppendEntries 接收到AppendEntries请
 func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error {
 	response.Success = false
+	response.NextIndex = 1
 	receivedHeatBeat.Store(true)
 	// 1. 返回假 如果领导人的任期小于接收者的当前任期
 	if request.Term < rf.CurrentTerm {
@@ -71,11 +69,12 @@ func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntr
 		response.NextIndex = rf.getLastIndex() + 1
 		return nil
 	}
+	// 设置领导人id
+	rf.LeaderId = request.LeaderId
 	// 所有 服务的要求； 请求中的 任期比自己大，要更新当前的任期
 	if request.Term > rf.CurrentTerm {
 		rf.CurrentTerm = request.Term
 		rf.Lock.Lock()
-		fmt.Println("切换为Follower  AppendEntries")
 		rf.SetAction(Follower, FOLLOWER)
 		rf.VotedFor = -1
 		rf.Lock.Unlock()
@@ -85,7 +84,6 @@ func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntr
 	// 如果已经超过了当前节点最大的索引，需要调整，这样下次，服务端就会发送正常的数据
 	if request.PrevLogIndex > rf.getLastIndex() {
 		response.NextIndex = rf.getLastIndex() + 1
-		fmt.Printf("直接结束: %d %d \n", request.PrevLogIndex, response.NextIndex)
 		return nil
 	}
 	// 2. 返回假 如果接收者日志中没有包含这样一个条目 即该条目的任期在 prevLogIndex 上能和 prevLogTerm 匹配上
@@ -107,19 +105,20 @@ func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntr
 	// 4. 追加日志中尚未存在的任何新条目
 	// 这里直接将PrevLogIndex后面的去掉，然后替换为新的
 	rf.Logs = rf.Logs[:request.PrevLogIndex+1-baseIndex]
-	if len(request.Entries) > 0 {
-		fmt.Println("追加日志：")
-		fmt.Println(request.Entries)
-	}
 	rf.Logs = append(rf.Logs, request.Entries...)
 	response.Success = true
 	response.NextIndex = rf.getLastIndex() + 1
+	if response.NextIndex == 0 {
+		fmt.Printf("%d  %d  \n", len(rf.Logs), response.NextIndex)
+	}
 
 	//5.  如果领导人的已知已提交的最高日志条目的索引大于接收者的已知已提交最高日志条目的索引（leaderCommit > commitIndex），
 	//则把接收者的已知已经提交的最高的日志条目的索引commitIndex 重置为 领导人的已知已经提交的最高的日志条目的索引
 	//leaderCommit 或者是 上一个新条目的索引 取两者的最小值
 	if request.LeaderCommit > rf.CommitIndex {
 		rf.CommitIndex = Min(rf.getLastIndex(), request.LeaderCommit)
+		//将接收到的日志应用到状态机中
+		go rf.apply()
 	}
 	return nil
 }
@@ -161,10 +160,9 @@ func Leader(rf *Raft) {
 			copy(request.Entries, rf.Logs[request.PrevLogIndex+1-baseIndex:])
 			request.LeaderCommit = rf.CommitIndex
 			go func(i int, req AppendEntriesRequest) {
-				rf.sendAppendEntries(i, req, new(AppendEntriesResponse))
+				rf.sendAppendEntries(i, req)
 			}(i, request)
 		}
-
 	}
 	time.Sleep(50 * time.Millisecond)
 }
@@ -186,7 +184,12 @@ func (r *Raft) updateCommitIndex() {
 			MaxCommitIndex = i
 		}
 	}
+	commitIndexChange := r.CommitIndex != MaxCommitIndex
 	r.CommitIndex = MaxCommitIndex
+	// 对于已经提交的日志，应用到状态机中
+	if commitIndexChange {
+		go r.apply()
+	}
 }
 
 // 是否接收到leader的心跳
@@ -244,7 +247,6 @@ func Candidate(r *Raft) {
 	}
 	// 收到心跳请求，切换为Follower
 	if receivedHeatBeat.Load() && r.State != FOLLOWER {
-		fmt.Println("切换为Follower Candidate  ")
 		r.SetAction(Follower, FOLLOWER)
 	}
 }
@@ -281,7 +283,6 @@ func (rf *Raft) sendRequestVote(server int, request RequestVoteRequest, reply *R
 	// 如果响应中的term 大于当前term， 转换为follower
 	if reply.Term > rf.CurrentTerm {
 		rf.CurrentTerm = reply.Term
-		fmt.Println("切换为Follower sendsendRequestVote")
 		rf.SetAction(Follower, FOLLOWER)
 		rf.VotedFor = -1
 	}
@@ -297,7 +298,8 @@ func (rf *Raft) sendRequestVote(server int, request RequestVoteRequest, reply *R
 	}
 	return true
 }
-func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest, reply *AppendEntriesResponse) {
+func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest) {
+	reply := new(AppendEntriesResponse)
 	client := getRpcClient(rf, server)
 	// 尝试重连
 	if client == nil {
@@ -312,6 +314,7 @@ func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest, repl
 	if err != nil {
 		//下次尝试重新建立连接
 		setRpcClient(rf, server, nil)
+		return
 	}
 
 	// 调整为 Follower
@@ -334,7 +337,6 @@ func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest, repl
 			rf.MatchIndex[server] = lastEntryIndex
 		}
 	} else {
-		fmt.Printf("同步失败 %d  %d", rf.NextIndex[server], reply.NextIndex)
 		// 更新失败时 reply中包含了NextIndex,进行调整
 		rf.NextIndex[server] = reply.NextIndex
 	}
@@ -398,6 +400,7 @@ func NewRaft() *Raft {
 	raft.State = FOLLOWER
 	raft.CurrentTerm = 0
 	raft.VotedFor = -1
+	// Logs中有一个初始条目；所有节点在term=0,logindex=0的日志都是一致的
 	raft.Logs = []LogEntry{
 		{
 			LogIndex: 0,
@@ -407,8 +410,8 @@ func NewRaft() *Raft {
 	raft.CommitIndex = 0
 	raft.LastApplied = 0
 	raft.Action = Follower
+	raft.ApplyLogFunc = DefaultApply
 	return &raft
-
 }
 
 func (rf *Raft) SetAction(f func(r *Raft), state NodeState) {
@@ -416,9 +419,27 @@ func (rf *Raft) SetAction(f func(r *Raft), state NodeState) {
 	rf.State = state
 }
 
+// 应用消息到状态机
+func (rf *Raft) apply() {
+	rf.Lock.Lock()
+	defer rf.Lock.Unlock()
+	commitIndex := rf.CommitIndex
+	baseIndex := rf.Logs[0].LogIndex
+	for i := rf.LastApplied + 1; i <= commitIndex; i++ {
+		rf.ApplyLogFunc(rf, rf.Logs[i-baseIndex])
+		rf.LastApplied = i
+	}
+}
+
 // StartMainLoop 执行 raft主循环
 func (rf *Raft) StartMainLoop() {
 	for {
+		// 执行 raft节点的任务
 		rf.Action(rf)
 	}
+}
+
+func DefaultApply(r *Raft, entry LogEntry) {
+	fmt.Print("应用日志:")
+	fmt.Println(entry)
 }
