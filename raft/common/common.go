@@ -117,3 +117,28 @@ type RequestVoteResponse struct {
 	//候选人赢得了此张选票时为真
 	VoteGranted bool
 }
+
+// InstallSnapshotRequest 安装快照请求
+type InstallSnapshotRequest struct {
+	//领导人的任期号
+	Term int
+	//领导人的 ID，以便于跟随者重定向请求
+	LeaderId int
+	// 快照中包含的最后日志条目的索引值
+	LastIncludedIndex int
+	// 快照中包含的最后日志条目的任期号
+	LastIncludedTerm int
+	//分块在快照中的字节偏移量
+	Offset int
+	//从偏移量开始的快照分块的原始字节
+	data []int
+	//如果这是最后一个分块则为 true
+	done bool
+}
+
+// InstallSnapshotResponse 安装快照响应
+type InstallSnapshotResponse struct {
+	Term int
+	// 将 NextIndex 进行返回
+	NextIndex int
+}

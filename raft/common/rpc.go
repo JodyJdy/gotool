@@ -9,6 +9,9 @@ type RaftRpc interface {
 	// AppendEntries 追加条目
 	AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error
 
+	// InstallSnapshot 安装快照
+	InstallSnapshot(request InstallSnapshotRequest, response *InstallSnapshotResponse) error
+
 	AppendLog(LogCommand interface{}, reply *struct{}) error
 }
 
@@ -26,4 +29,7 @@ func (c RaftRpcClient) AppendEntries(request AppendEntriesRequest, response *App
 }
 func (c RaftRpcClient) AppendLog(logCommand LogCommand, reply *struct{}) error {
 	return c.Client.Call(c.Target+".AppendLog", logCommand, reply)
+}
+func (c RaftRpcClient) InstallSnapshot(request InstallSnapshotRequest, response *InstallSnapshotResponse) error {
+	return c.Client.Call(c.Target+".InstallSnapshot", request, response)
 }
