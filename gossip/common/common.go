@@ -219,14 +219,16 @@ func (g *GossipNode) StartAntiEntrop() {
 			}
 			// 发送数据
 			for _, v := range sendNodes {
-				if g.ClientMap[v] == nil {
-					g.lock.Lock()
-					g.ClientMap[v] = g.createRpcClient(v)
-					g.lock.Unlock()
-				}
-				if g.ClientMap[v] != nil {
-					g.ClientMap[v].Push(g.MetaData, new(struct{}))
-				}
+				go func(n int) {
+					if g.ClientMap[n] == nil {
+						g.lock.Lock()
+						g.ClientMap[n] = g.createRpcClient(n)
+						g.lock.Unlock()
+					}
+					if g.ClientMap[n] != nil {
+						g.ClientMap[n].Push(g.MetaData, new(struct{}))
+					}
+				}(v)
 			}
 
 		}
