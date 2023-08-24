@@ -11,6 +11,10 @@ type AddressWithPort struct {
 	Port int
 }
 
+func GetRpcName(node int) string {
+	return "GossipNode-" + strconv.Itoa(node)
+}
+
 func Parse(addressWithPort string) *AddressWithPort {
 	result := new(AddressWithPort)
 	splits := strings.Split(addressWithPort, ":")

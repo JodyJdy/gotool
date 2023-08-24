@@ -7,11 +7,13 @@ import (
 
 func main() {
 	address := []string{
-		":1234", ":1235", ":1236", ":1237", ":1238",
+		":8080", ":8081", ":8082", ":8083", ":8084", ":8085", ":8086", ":8087", ":8088",
 	}
-	for i := 1; i < 5; i++ {
-		node := common.NewGossipNode(i, address[i-1])
-		node.Start()
+	for i := 0; i < 9; i++ {
+		go func(a int) {
+			node := common.NewGossipNode(a, address[a])
+			go node.Start()
+		}(i)
 	}
 	time.Sleep(999999 * time.Second)
 

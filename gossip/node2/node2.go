@@ -2,12 +2,11 @@ package main
 
 import (
 	"common"
-	"time"
+	"net/rpc"
 )
 
 func main() {
-	node := common.NewGossipNode(2, ":1235")
-	node.StartMembershipListen()
-	node.StartKeepAlive()
-	time.Sleep(999999 * time.Second)
+	c, _ := rpc.Dial("tcp", ":8080")
+	y := common.GossipRpcClient{Client: c, Target: common.GetRpcName(0)}
+	y.Update(common.Pair{Key: "hello", Value: "workd"}, new(struct{}))
 }

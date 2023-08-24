@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"golang.org/x/net/ipv4"
+	"math/rand"
 	"net"
 	"net/rpc"
 	"sync"
@@ -17,6 +18,16 @@ type Node struct {
 	Id int
 	// 节点rpc地址
 	RpcAddress string
+}
+
+// Pair 一个键值对
+type Pair struct {
+	// 键
+	Key string
+	// 值
+	Value string
+	// 数据版本号
+	Version uint32
 }
 
 type GossipNode struct {
@@ -33,8 +44,12 @@ type GossipNode struct {
 	NodeStatus map[int]int
 	// 记录集群节点的信息
 	NodeMessage map[int]*Node
+	// 记录集群节点的Client
+	ClientMap map[int]*GossipRpcClient
 	// 扇出数，发送数据时，随机选取FanOut个节点进行发送
 	FanOut int
+	// 节点状态信息
+	MetaData map[string]*Pair
 }
 
 func Server(addressWithPort *AddressWithPort) *net.UDPConn {
@@ -75,7 +90,7 @@ func (g *GossipNode) StartMembershipListen() {
 					g.NodeStatus[node.Id] = time.Now().Second()
 					g.NodeMessage[node.Id] = node
 					g.lock.Unlock()
-					fmt.Printf("节点%d 接收到节点:%v \n", g.Id, node)
+					//fmt.Printf("节点%d 接收到节点:%v \n", g.Id, node)
 				}
 			}
 		}
@@ -142,13 +157,18 @@ func NewGossipNode(id int, rpcAddress string) *GossipNode {
 	node.NodeDownTime = 10
 	node.RpcAddress = rpcAddress
 	node.FanOut = 3
+	node.MetaData = make(map[string]*Pair)
+	node.ClientMap = make(map[int]*GossipRpcClient)
 	return node
 }
 
 // StartRpcListen 开启Rpc监听
 func (g *GossipNode) StartRpcListen() {
-	rpc.RegisterName("GossipNode", g)
-	listener, _ := net.Listen("tcp", g.RpcAddress)
+	rpc.RegisterName(GetRpcName(g.Id), g)
+	listener, err := net.Listen("tcp", g.RpcAddress)
+	if err != nil {
+		panic(err)
+	}
 	go func() {
 		for {
 			conn, _ := listener.Accept()
@@ -158,16 +178,128 @@ func (g *GossipNode) StartRpcListen() {
 	fmt.Printf("%d 开启Rpc监听\n", g.Id)
 }
 
+// StartAntiEntrop 开启反熵行为
+func (g *GossipNode) StartAntiEntrop() {
+	go func() {
+		for {
+			// 发送数据
+			time.Sleep(1 * time.Second)
+			// 随机选取节点
+			var nodes []int
+			for k, v := range g.NodeMessage {
+				if v != nil {
+					nodes = append(nodes, k)
+				}
+			}
+			NodeNum := len(nodes)
+			//集群中还没有节点注册
+			if NodeNum == 0 {
+				continue
+			}
+
+			var sendNodes []int
+			//全量
+			if NodeNum >= g.FanOut {
+				sendNodes = nodes
+			} else {
+				//随机选取
+				choose := make(map[int]bool)
+				count := 0
+				for {
+					i := rand.Intn(len(nodes))
+					if !choose[nodes[i]] {
+						choose[nodes[i]] = true
+						sendNodes = append(sendNodes, nodes[i])
+						count++
+					}
+					if count == g.FanOut {
+						break
+					}
+				}
+			}
+			// 发送数据
+			for _, v := range sendNodes {
+				if g.ClientMap[v] == nil {
+					g.lock.Lock()
+					g.ClientMap[v] = g.createRpcClient(v)
+					g.lock.Unlock()
+				}
+				if g.ClientMap[v] != nil {
+					g.ClientMap[v].Push(g.MetaData, new(struct{}))
+				}
+			}
+
+		}
+	}()
+}
+func (g *GossipNode) createRpcClient(node int) *GossipRpcClient {
+	message := g.NodeMessage[node]
+	c, _ := rpc.Dial("tcp", message.RpcAddress)
+	return &GossipRpcClient{Client: c, Target: GetRpcName(node)}
+}
+
 func (g *GossipNode) Start() {
 	g.StartRpcListen()
 	g.StartMembershipListen()
 	// 要保证 第一次保活后，rpc监听已经打开
 	g.StartKeepAlive()
+	// 开启反熵策略
+	g.StartAntiEntrop()
 }
 
-func (g *GossipNode) Push(req *struct{}, resp *struct{}) error {
+func (g *GossipNode) Push(req map[string]*Pair, resp *struct{}) error {
+	// 收到其他节点的信息
+	g.lock.Lock()
+	for k, v := range req {
+		if v != nil {
+			if g.MetaData[k] == nil {
+				g.MetaData[k] = v
+				fmt.Printf("节点: %d  %s 接收到数据更新: %v \n", g.Id, g.RpcAddress, v)
+			} else {
+				if g.MetaData[k].Version < v.Version {
+					g.MetaData[k].Version = v.Version
+					g.MetaData[k].Value = v.Value
+					fmt.Printf("节点: %d  %s 接收到数据更新: %v \n", g.Id, g.RpcAddress, v)
+				}
+			}
+		}
+	}
+	g.lock.Unlock()
 	return nil
 }
 func (g *GossipNode) Pull(req *struct{}, resp *struct{}) error {
+	// 只做基于push的同步
+	return nil
+}
+
+func (g *GossipNode) Update(req Pair, resp *struct{}) error {
+	// 接收到的数据，是不考虑版本号的
+	fmt.Printf("节点: %d 接收到数据 %v  \n", g.Id, req)
+	if g.MetaData[req.Key] == nil {
+		req.Version = 1
+		g.lock.Lock()
+		g.MetaData[req.Key] = &req
+		g.lock.Unlock()
+	} else {
+		g.lock.Lock()
+		g.MetaData[req.Key].Version++
+		g.MetaData[req.Key].Value = req.Value
+		g.lock.Unlock()
+	}
+	return nil
+}
+
+type KeyNotExist struct {
+	err string
+}
+
+func (k *KeyNotExist) Error() string {
+	return k.err
+}
+func (g *GossipNode) Get(key string, resp *Pair) error {
+	if g.MetaData[key] == nil {
+		return &KeyNotExist{err: key + " 不存在"}
+	}
+	*resp = *g.MetaData[key]
 	return nil
 }
