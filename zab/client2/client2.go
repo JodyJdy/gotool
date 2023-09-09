@@ -5,15 +5,15 @@ import (
 )
 
 func main() {
-	zab := new(common.Zab)
-	zab.ServerId = 2
+	zab := common.NewZab(2)
 	initAddress(zab, zab.ServerId)
 	zab.StartListen()
 	zab.InitRpcClient()
+	zab.StartMainLoop()
 }
 
 func initAddress(z *common.Zab, serverId int) {
-	allAddress := map[int]string{1: ":1234", 2: ":1235", 3: ":1236"}
+	allAddress := map[int]string{1: ":1234", 2: ":1235", 3: ":1236", 4: ":1237", 5: ":1238"}
 	otherAddress := make(map[int]string)
 	for i, v := range allAddress {
 		if i != serverId {

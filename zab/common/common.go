@@ -10,7 +10,7 @@ type NodeState int
 // LEADER 领导者
 var LEADER NodeState = 1
 
-// 选举状态
+// LOOKING 选举状态
 var LOOKING NodeState = 2
 
 // FOLLOWER 追随者
@@ -43,7 +43,23 @@ type Zab struct {
 	// 其他节点地址 serverId->地址 的映射
 	OtherNodeAddress map[int]string
 	// 更改/获取 Zab状态的锁
-	Lock sync.Mutex
+	StateLock sync.Mutex
+	// Vote Lock 投票相关的锁
+	VoteLock sync.Mutex
+	// 投票信息 serverId 投票给 -> serverId 的映射
+	VoteMap map[int]*Vote
+}
+type Vote struct {
+	//获取票的 服务器id
+	VotedLeaderServerId int
+	//获取票的服务器的 zxid
+	VotedLeaderZxId uint64
+	//投票人的状态
+	State NodeState
+}
+type PingMsg struct {
+	LeaderServerId int
+	ZxId           uint64
 }
 
 func (zab *Zab) ZxId() uint64 {
@@ -52,14 +68,26 @@ func (zab *Zab) ZxId() uint64 {
 
 // IncrementCounter 计数器累加
 func (zab *Zab) IncrementCounter() {
-	zab.Lock.Lock()
+	zab.StateLock.Lock()
 	zab.Counter++
-	zab.Lock.Unlock()
+	zab.StateLock.Unlock()
 }
 
 // IncrementEpoch 纪元累加
 func (zab *Zab) IncrementEpoch() {
-	zab.Lock.Lock()
+	zab.StateLock.Lock()
 	zab.Epoch++
-	zab.Lock.Unlock()
+	zab.StateLock.Unlock()
+}
+
+// VoteNotification 投票通知
+type VoteNotification struct {
+	//投票人 server ID
+	ServeId int
+	//获取票的 服务器id
+	VotedLeaderServerId int
+	//获取票的服务器的 zxid
+	VotedLeaderZxId uint64
+	//投票人的状态
+	State NodeState
 }

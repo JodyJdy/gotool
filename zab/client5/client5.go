@@ -5,7 +5,7 @@ import (
 )
 
 func main() {
-	zab := common.NewZab(1)
+	zab := common.NewZab(5)
 	initAddress(zab, zab.ServerId)
 	zab.StartListen()
 	zab.InitRpcClient()
