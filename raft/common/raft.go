@@ -436,6 +436,25 @@ func (rf *Raft) StartMainLoop() {
 	}
 }
 
+func (rf *Raft) InstallSnapshot(request InstallSnapshotRequest, response *InstallSnapshotResponse) error {
+
+	if request.Term < rf.CurrentTerm {
+		response.Term = rf.CurrentTerm
+		return nil
+	}
+	if request.Term > rf.CurrentTerm {
+		rf.CurrentTerm = request.Term
+	}
+
+	// 应用日志
+	//快照传输完毕后，更改 NextIndex
+	if request.done {
+		//response.NextIndex = xxx
+	}
+
+	return nil
+}
+
 func DefaultApply(r *Raft, entry LogEntry) {
 	fmt.Print("应用日志:")
 	fmt.Println(entry)
