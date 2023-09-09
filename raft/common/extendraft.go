@@ -18,7 +18,7 @@ func init() {
 	gob.RegisterName("common.LogCommand", LogCommand{})
 }
 
-// AppendLog 追加日志
+// AppendLog 追加日志，由客户端调用向Leader节点添加数据
 func (r *Raft) AppendLog(logCommand LogCommand, reply *struct{}) error {
 	if r.State != LEADER {
 		return nil

@@ -9,6 +9,7 @@ type RaftRpc interface {
 	// AppendEntries 追加条目
 	AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error
 
+	// AppendLog 由客户端调用 向 Leader添加数据
 	AppendLog(LogCommand interface{}, reply *struct{}) error
 }
 
