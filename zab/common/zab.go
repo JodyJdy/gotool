@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/rpc"
 	"reflect"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,8 @@ func NewZab(serverId int) *Zab {
 	zab.SetAction(Looking, LOOKING)
 	zab.VoteMap = make(map[int]*Vote)
 	zab.OtherNodeAddress = make(map[int]string)
+	zab.Logs = []LogEntry{}
+	zab.LastReceiveZxIdMap = make(map[int]uint64)
 	return zab
 }
 
@@ -113,18 +116,26 @@ func (zab *Zab) SetAction(f func(r *Zab), state NodeState) {
 
 // LeaderFirst 执行刚成为Leader时的行为
 func LeaderFirst(zab *Zab) {
-	fmt.Println("first")
+	fmt.Println("leader first")
+	//如果有必要，需要进行崩溃恢复，先关闭广播
+	couldBroadCast.Store(false)
 	zab.IncrementEpoch()
+	//重置计数器
+	zab.Counter = 0
 	zab.Action = Leader
 	Leader(zab)
 }
 
+var couldBroadCast atomic.Bool
+
 func Leader(zab *Zab) {
 	fmt.Println("Leader")
-	zab.ping()
-	time.Sleep(150 * time.Millisecond)
+	go zab.ping()
+	//发送日志
+	zab.sendLog()
+	time.Sleep(50 * time.Millisecond)
 }
-func (zab *Zab) Ping(msg PingMsg, reply *struct{}) error {
+func (zab *Zab) Ping(msg PingMsg, response *PingResponse) error {
 	//接受到心跳
 	receivedHeatBeat.Store(true)
 	if zab.State == LOOKING {
@@ -133,13 +144,18 @@ func (zab *Zab) Ping(msg PingMsg, reply *struct{}) error {
 	//更新节点epoch
 	zab.Epoch = GetEpoch(msg.ZxId)
 	zab.Counter = GetCounter(msg.ZxId)
+	//更新已经提交的事务
+	response.LastReceiveZxId = zab.LastReceiveZxId
+	//调整已经提交事务
+	zab.LastCommitZxId = Min(zab.LastReceiveZxId, msg.LeaderCommitZxId)
 	return nil
 }
 
 func (zab *Zab) ping() {
 	msg := PingMsg{
-		LeaderServerId: zab.ServerId,
-		ZxId:           zab.ZxId(),
+		LeaderServerId:   zab.ServerId,
+		ZxId:             zab.ZxId(),
+		LeaderCommitZxId: zab.LastCommitZxId,
 	}
 	//进行广播，不考虑响应
 	go func(msg PingMsg) {
@@ -155,11 +171,17 @@ func (zab *Zab) sendPing(serverId int, msg PingMsg) {
 	if client == nil {
 		return
 	}
-	err := client.Ping(msg, new(struct{}))
+	var response = new(PingResponse)
+	err := client.Ping(msg, response)
 	//网络有故障
 	if err != nil {
 		fmt.Println(err)
 		setRpcClient(zab, serverId, nil)
+	} else {
+		//更新上次接收的最大zxid
+		zab.ReceiveIdLock.Lock()
+		zab.LastReceiveZxIdMap[serverId] = response.LastReceiveZxId
+		zab.ReceiveIdLock.Unlock()
 	}
 }
 
@@ -325,6 +347,97 @@ func Looking(zab *Zab) {
 	time.Sleep(time.Duration(rand.Int63()%300+510) * time.Millisecond)
 	//检查状态
 	zab.checkState()
+}
+func (zab *Zab) SendLog(log AppendLog, result *AppendLogResult) error {
+	//防止服务端重复发送
+	if len(log.Entries) > 0 && log.Entries[0].ZxId > zab.LastReceiveZxId {
+		//这里简单直接追加日志
+		zab.Logs = append(zab.Logs, log.Entries...)
+		zab.LastReceiveZxId = log.Entries[len(log.Entries)-1].ZxId
+		fmt.Println(log.Entries)
+	}
+	result.Ack = true
+	return nil
+}
+func (zab *Zab) doSendLog(lastReceiveId uint64, serverId int, log []LogEntry) {
+	client := getRpcClientWithReConn(zab, serverId)
+	if client == nil {
+		return
+	}
+	//防止重复发送，进行更改
+	zab.ReceiveIdLock.Lock()
+	zab.LastReceiveZxIdMap[serverId] = log[len(log)-1].ZxId
+	zab.ReceiveIdLock.Unlock()
+	r := new(AppendLogResult)
+	err := client.SendLog(AppendLog{log}, r)
+	//状态还原，进行重试
+	if err != nil || !r.Ack {
+		zab.ReceiveIdLock.Lock()
+		zab.LastReceiveZxIdMap[serverId] = lastReceiveId
+		zab.ReceiveIdLock.Unlock()
+	}
+	//网络有故障
+	if err != nil {
+		setRpcClient(zab, serverId, nil)
+	}
+
+}
+func (zab *Zab) sendLog() {
+	//更新已经提交
+	commitZxId := zab.LastCommitZxId
+	var zxids []uint64
+	for _, v := range zab.LastReceiveZxIdMap {
+		if v > commitZxId {
+			zxids = append(zxids, v)
+		}
+	}
+	f := func(a, b int) bool {
+		return zxids[a] < zxids[b]
+	}
+	//说明有必要更新commitIndex
+	if len(zxids) >= len(zab.OtherNodeAddress)/2 {
+		sort.Slice(zxids, f)
+		//最小的作为更新项目
+		zab.LastCommitZxId = zxids[0]
+	}
+	//将日志发送到每个节点上
+	logLen := len(zab.Logs)
+	for k, _ := range zab.OtherNodeAddress {
+		lastReceivedZxId := zab.LastReceiveZxIdMap[k]
+		if lastReceivedZxId >= 0 {
+			//选择符合要求的数据，发送给Follower节点，这里为了处理方便，全量的发送
+			for i := 0; i < logLen; i++ {
+				l := zab.Logs[i]
+				if l.ZxId > lastReceivedZxId {
+					//暂时先同步发
+					func(lastReceiveZxId uint64, serverId int, log []LogEntry) {
+						zab.doSendLog(lastReceivedZxId, serverId, log)
+					}(lastReceivedZxId, k, zab.Logs[i:logLen])
+					break
+				}
+			}
+		}
+	}
+}
+
+// CouldBroadCast 重新选举的leader需要在崩溃恢复后才能进行广播
+func (zab *Zab) CouldBroadCast() bool {
+	//已经被重置了，可以广播
+	if couldBroadCast.Load() {
+		return true
+	}
+	l := len(zab.Logs)
+	if l == 0 {
+		couldBroadCast.Store(true)
+		return true
+	}
+	//已经提交了，可以进行
+	if zab.Logs[l-1].ZxId < zab.LastCommitZxId {
+		couldBroadCast.Store(true)
+		return true
+	}
+	return false
+
 }
 
 // 是否接收到leader的心跳

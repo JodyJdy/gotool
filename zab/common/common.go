@@ -46,8 +46,20 @@ type Zab struct {
 	StateLock sync.Mutex
 	// Vote Lock 投票相关的锁
 	VoteLock sync.Mutex
+	//日志追加的锁
+	LogLock sync.Mutex
+	//Follower 接收id更改的锁
+	ReceiveIdLock sync.Mutex
+
 	// 投票信息 serverId 投票给 -> serverId 的映射
 	VoteMap map[int]*Vote
+
+	// 上次提交的 zxid, Leader,Follower均会使用
+	LastCommitZxId uint64
+	//接收到的消息的最大zxid（接收到还未提交）Follower 使用
+	LastReceiveZxId uint64
+	//存储所有Follower 上次接收的ZxId
+	LastReceiveZxIdMap map[int]uint64
 }
 type Vote struct {
 	//获取票的 服务器id
@@ -60,6 +72,14 @@ type Vote struct {
 type PingMsg struct {
 	LeaderServerId int
 	ZxId           uint64
+	//leader已经提交了的zxid
+	LeaderCommitZxId uint64
+}
+
+// PingResponse 返回上次接收的消息
+type PingResponse struct {
+	//接收到的消息的最大zxid（接收到还未提交）Follower 使用
+	LastReceiveZxId uint64
 }
 
 func (zab *Zab) ZxId() uint64 {
@@ -90,4 +110,11 @@ type VoteNotification struct {
 	VotedLeaderZxId uint64
 	//投票人的状态
 	State NodeState
+}
+
+type AppendLog struct {
+	Entries []LogEntry
+}
+type AppendLogResult struct {
+	Ack bool
 }
