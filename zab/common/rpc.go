@@ -8,7 +8,11 @@ type ZabRpc interface {
 	// Ping Leader 向 其他节点 发送ping
 	Ping(msg PingMsg, reply *PingResponse) error
 
-	SendLog(log AppendLog, result *AppendLogResult) error
+	// Recovery 故障恢复
+	Recovery(log AppendLog, result *AppendLogResult) error
+
+	// BroadCast 广播阶段
+	BroadCast(log AppendLog, result *AppendLogResult) error
 
 	AddLog(logCommand LogCommand, reply *struct{}) error
 }
@@ -26,9 +30,13 @@ func (c ZabRpcClient) VoteNotification(request VoteNotification, reply *struct{}
 func (c ZabRpcClient) Ping(msg PingMsg, reply *PingResponse) error {
 	return c.Client.Call(c.Target+".Ping", msg, reply)
 }
-func (c ZabRpcClient) SendLog(log AppendLog, result *AppendLogResult) error {
-	return c.Client.Call(c.Target+".SendLog", log, result)
+func (c ZabRpcClient) Recovery(log AppendLog, result *AppendLogResult) error {
+	return c.Client.Call(c.Target+".Recovery", log, result)
 }
+func (c ZabRpcClient) BroadCast(log AppendLog, result *AppendLogResult) error {
+	return c.Client.Call(c.Target+".BroadCast", log, result)
+}
+
 func (c ZabRpcClient) AddLog(logCommand LogCommand, reply *struct{}) error {
 	return c.Client.Call(c.Target+".AddLog", logCommand, reply)
 
