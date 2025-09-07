@@ -119,7 +119,6 @@ func LeaderFirst(zab *Zab) {
 	fmt.Println("leader first")
 	//如果有必要，需要进行崩溃恢复，先关闭广播
 	couldBroadCast.Store(false)
-	zab.IncrementEpoch()
 	//重置计数器
 	zab.Counter = 0
 	zab.Action = Leader
@@ -129,25 +128,33 @@ func LeaderFirst(zab *Zab) {
 var couldBroadCast atomic.Bool
 
 func Leader(zab *Zab) {
-	fmt.Println("Leader")
+	fmt.Printf("Leader %d \n", zab.Epoch)
 	go zab.ping()
 	//发送日志
-	zab.sendLog()
+	if !couldBroadCast.Load() {
+		zab.recovery()
+	}
 	time.Sleep(50 * time.Millisecond)
 }
 func (zab *Zab) Ping(msg PingMsg, response *PingResponse) error {
 	//接受到心跳
 	receivedHeatBeat.Store(true)
-	if zab.State == LOOKING {
-		zab.SetAction(Follower, FOLLOWER)
+	epoch := GetEpoch(msg.ZxId)
+	counter := GetCounter(msg.ZxId)
+	response.Epoch = zab.Epoch
+	if epoch >= zab.Epoch {
+		if zab.State == LOOKING {
+			//承认当前领导
+			zab.SetAction(Follower, FOLLOWER)
+		}
+		//更新节点epoch
+		zab.Epoch = epoch
+		zab.Counter = counter
+		//更新已经提交的事务
+		response.LastReceiveZxId = zab.LastReceiveZxId
+		//调整已经提交事务
+		zab.LastCommitZxId = Min(zab.LastReceiveZxId, msg.LeaderCommitZxId)
 	}
-	//更新节点epoch
-	zab.Epoch = GetEpoch(msg.ZxId)
-	zab.Counter = GetCounter(msg.ZxId)
-	//更新已经提交的事务
-	response.LastReceiveZxId = zab.LastReceiveZxId
-	//调整已经提交事务
-	zab.LastCommitZxId = Min(zab.LastReceiveZxId, msg.LeaderCommitZxId)
 	return nil
 }
 
@@ -178,10 +185,20 @@ func (zab *Zab) sendPing(serverId int, msg PingMsg) {
 		fmt.Println(err)
 		setRpcClient(zab, serverId, nil)
 	} else {
-		//更新上次接收的最大zxid
-		zab.ReceiveIdLock.Lock()
-		zab.LastReceiveZxIdMap[serverId] = response.LastReceiveZxId
-		zab.ReceiveIdLock.Unlock()
+		//虽然当前是Leader，但是Epoch比对方小，将当前角色设置为 LOOKING
+		if response.Epoch > zab.Epoch {
+			zab.StateLock.Lock()
+			//重置投票箱子
+			zab.resetVote()
+			//进入选举状态
+			zab.SetAction(Looking, LOOKING)
+			zab.StateLock.Unlock()
+		} else {
+			//更新上次接收的最大zxid
+			zab.ReceiveIdLock.Lock()
+			zab.LastReceiveZxIdMap[serverId] = response.LastReceiveZxId
+			zab.ReceiveIdLock.Unlock()
+		}
 	}
 }
 
@@ -348,13 +365,12 @@ func Looking(zab *Zab) {
 	//检查状态
 	zab.checkState()
 }
-func (zab *Zab) SendLog(log AppendLog, result *AppendLogResult) error {
+func (zab *Zab) Recovery(log AppendLog, result *AppendLogResult) error {
 	//防止服务端重复发送
 	if len(log.Entries) > 0 && log.Entries[0].ZxId > zab.LastReceiveZxId {
 		//这里简单直接追加日志
 		zab.Logs = append(zab.Logs, log.Entries...)
 		zab.LastReceiveZxId = log.Entries[len(log.Entries)-1].ZxId
-		fmt.Println(log.Entries)
 	}
 	result.Ack = true
 	return nil
@@ -369,7 +385,7 @@ func (zab *Zab) doSendLog(lastReceiveId uint64, serverId int, log []LogEntry) {
 	zab.LastReceiveZxIdMap[serverId] = log[len(log)-1].ZxId
 	zab.ReceiveIdLock.Unlock()
 	r := new(AppendLogResult)
-	err := client.SendLog(AppendLog{log}, r)
+	err := client.Recovery(AppendLog{log}, r)
 	//状态还原，进行重试
 	if err != nil || !r.Ack {
 		zab.ReceiveIdLock.Lock()
@@ -382,7 +398,9 @@ func (zab *Zab) doSendLog(lastReceiveId uint64, serverId int, log []LogEntry) {
 	}
 
 }
-func (zab *Zab) sendLog() {
+
+// 故障恢复
+func (zab *Zab) recovery() {
 	//更新已经提交
 	commitZxId := zab.LastCommitZxId
 	var zxids []uint64
@@ -438,6 +456,57 @@ func (zab *Zab) CouldBroadCast() bool {
 	}
 	return false
 
+}
+
+// BroadCast 接受到广播
+func (zab *Zab) BroadCast(log AppendLog, result *AppendLogResult) error {
+	zab.LogLock.Lock()
+	if len(log.Entries) > 0 && log.Entries[0].ZxId > zab.LastReceiveZxId {
+		//这里简单直接追加日志
+		zab.Logs = append(zab.Logs, log.Entries...)
+		zab.LastReceiveZxId = log.Entries[len(log.Entries)-1].ZxId
+		result.Ack = true
+	} else {
+		result.Ack = false
+	}
+	zab.LogLock.Unlock()
+	return nil
+}
+
+func (zab *Zab) doSendBroadCast(ch chan bool, log AppendLog, serverId int) {
+	client := getRpcClientWithReConn(zab, serverId)
+	if client == nil {
+		ch <- false
+		return
+	}
+	result := new(AppendLogResult)
+	err := client.BroadCast(log, result)
+	if err != nil || !result.Ack {
+		ch <- false
+		return
+	}
+	ch <- true
+}
+
+// SendBroadCast 发送广播
+func (zab *Zab) SendBroadCast(entry LogEntry) bool {
+	nodeNum := len(zab.OtherNodeAddress)
+	chs := make(chan bool, nodeNum)
+	var slice []LogEntry
+	slice = append(slice, entry)
+	log := AppendLog{
+		Entries: slice,
+	}
+	for k, _ := range zab.OtherNodeAddress {
+		go zab.doSendBroadCast(chs, log, k)
+	}
+	count := 0
+	for i := 0; i < nodeNum; i++ {
+		if <-chs {
+			count++
+		}
+	}
+	return count >= nodeNum/2
 }
 
 // 是否接收到leader的心跳

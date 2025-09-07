@@ -19,22 +19,37 @@ func init() {
 	gob.RegisterName("common.LogCommand", LogCommand{})
 }
 
+type ZabError struct {
+	msg string
+}
+
+func NewError(msg string) *ZabError {
+	return &ZabError{msg: msg}
+}
+func (z *ZabError) Error() string {
+	return z.msg
+}
+
 // AddLog 向Leader 添加一个日志
 func (zab *Zab) AddLog(logCommand LogCommand, reply *struct{}) error {
-	fmt.Println("添加日志")
 	if zab.State != LEADER {
 		return nil
 	}
 	if !zab.CouldBroadCast() {
 		fmt.Println("崩溃恢复中，暂停广播")
 	}
-
 	zab.LogLock.Lock()
+	defer zab.LogLock.Unlock()
 	//添加计数器
 	zab.IncrementCounter()
-	zab.Logs = append(zab.Logs, LogEntry{
+	log := LogEntry{
 		zab.ZxId(), logCommand,
-	})
-	zab.LogLock.Unlock()
+	}
+	if zab.SendBroadCast(log) {
+		//广播成功才追加到日志里面去
+		zab.Logs = append(zab.Logs, log)
+	} else {
+		return NewError("消息广播失败")
+	}
 	return nil
 }

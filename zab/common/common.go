@@ -80,6 +80,8 @@ type PingMsg struct {
 type PingResponse struct {
 	//接收到的消息的最大zxid（接收到还未提交）Follower 使用
 	LastReceiveZxId uint64
+	//当前的Epoch
+	Epoch uint32
 }
 
 func (zab *Zab) ZxId() uint64 {

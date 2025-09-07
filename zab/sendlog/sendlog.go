@@ -13,7 +13,7 @@ import (
 测试日志的添加
 */
 func main() {
-	conn, err := net.Dial("tcp", ":1235")
+	conn, err := net.Dial("tcp", ":1234")
 	if err == nil {
 		cli := rpc.NewClient(conn)
 
