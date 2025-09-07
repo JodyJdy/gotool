@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -82,6 +83,17 @@ type PingResponse struct {
 	LastReceiveZxId uint64
 	//当前的Epoch
 	Epoch uint32
+}
+
+func (zab *Zab) SetState(state NodeState) {
+	if state == LEADER {
+		fmt.Println("LEADER")
+	} else if state == LOOKING {
+		fmt.Println("LOOKING")
+	} else if state == FOLLOWER {
+		fmt.Println("FOLLOWER")
+	}
+	zab.State = state
 }
 
 func (zab *Zab) ZxId() uint64 {

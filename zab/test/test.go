@@ -27,27 +27,27 @@ func main() {
 
 // 设置初始化的客户端的数量
 func startRaft(nodes int, port int, cur int) {
-	allAddress := []string{}
-	raft := common.NewRaft()
-	raft.Id = cur
+	allAddress := map[int]string{}
+	zab := common.NewZab(cur)
 	i := 0
 	for i < nodes {
-		allAddress = append(allAddress, ":"+strconv.Itoa(port))
+		allAddress[i] = ":" + strconv.Itoa(port)
 		port++
 		i++
 	}
-	initAddress(raft, cur, allAddress)
-	raft.StartListen()
-	raft.InitRpcClient()
-	raft.StartMainLoop()
+	initAddress(zab, cur, allAddress)
+	zab.StartListen()
+	zab.InitRpcClient()
+	zab.StartMainLoop()
 }
-func initAddress(r *common.Raft, index int, allAddress []string) {
-	var otherAddress []string
+func initAddress(r *common.Zab, index int, allAddress map[int]string) {
+	otherAddress := make(map[int]string)
 	for i, v := range allAddress {
 		if i != index {
-			otherAddress = append(otherAddress, v)
+			otherAddress[i] = v
 		}
 	}
+	fmt.Println("current address", allAddress[index])
 	fmt.Println("other address:", otherAddress)
 	r.Address = allAddress[index]
 	r.OtherNodeAddress = otherAddress

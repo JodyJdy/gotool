@@ -1,11 +1,7 @@
 go 1.20
 
 use (
-client1
-client2
-client3
-client4
-client5
+test
 sendlog
 common
 )

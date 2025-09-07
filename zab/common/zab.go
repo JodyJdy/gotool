@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
+	"os"
 	"reflect"
 	"sort"
 	"sync"
@@ -48,9 +49,14 @@ func (zab *Zab) StartListen() {
 	// 注册服务
 	err := rpc.RegisterName("Zab", zab)
 	if err != nil {
-		return
+		fmt.Println("rpc注册失败:", err)
+		os.Exit(1)
 	}
-	listener, _ := net.Listen("tcp", zab.Address)
+	listener, err := net.Listen("tcp", zab.Address)
+	if err != nil {
+		fmt.Println("地址监听失败:", err)
+		os.Exit(1)
+	}
 	go func() {
 		for {
 			conn, _ := listener.Accept()
@@ -63,7 +69,9 @@ func (zab *Zab) InitRpcClient() {
 	zab.Peers = sync.Map{}
 	for i, v := range zab.OtherNodeAddress {
 		conn, err := net.Dial("tcp", v)
-		fmt.Println(err)
+		if err != nil {
+			fmt.Println("初始化连接:", v, "失败:", err)
+		}
 		if err == nil {
 			cli := rpc.NewClient(conn)
 			setRpcClient(zab, i, &ZabRpcClient{
@@ -111,7 +119,7 @@ func (zab *Zab) StartMainLoop() {
 
 func (zab *Zab) SetAction(f func(r *Zab), state NodeState) {
 	zab.Action = f
-	zab.State = state
+	zab.SetState(state)
 }
 
 // LeaderFirst 执行刚成为Leader时的行为
@@ -128,7 +136,6 @@ func LeaderFirst(zab *Zab) {
 var couldBroadCast atomic.Bool
 
 func Leader(zab *Zab) {
-	fmt.Printf("Leader %d \n", zab.Epoch)
 	go zab.ping()
 	//发送日志
 	if !couldBroadCast.Load() {
@@ -182,7 +189,7 @@ func (zab *Zab) sendPing(serverId int, msg PingMsg) {
 	err := client.Ping(msg, response)
 	//网络有故障
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("发送请求出错，接收者Id:", serverId, "错误:", err)
 		setRpcClient(zab, serverId, nil)
 	} else {
 		//虽然当前是Leader，但是Epoch比对方小，将当前角色设置为 LOOKING
@@ -348,7 +355,6 @@ func (zab *Zab) VoteNotification(request VoteNotification, reply *struct{}) erro
 }
 
 func Looking(zab *Zab) {
-	fmt.Printf("LOOKING Epoch %d \n", zab.Epoch)
 	// 还没有开始投票， 投自己一票
 	if zab.VoteMap[zab.ServerId] == nil {
 		//调整epoch
@@ -513,7 +519,6 @@ func (zab *Zab) SendBroadCast(entry LogEntry) bool {
 var receivedHeatBeat atomic.Bool
 
 func Follower(zab *Zab) {
-	fmt.Printf("Follower EPOCH:%d \n", zab.Epoch)
 	//重置计数器
 	receivedHeatBeat.Store(false)
 	time.Sleep(time.Duration(rand.Int63()%333+550) * time.Millisecond)

@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -140,7 +141,6 @@ func LeaderFirst(r *Raft) {
 
 // Leader 职责
 func Leader(rf *Raft) {
-	//fmt.Println("leader ")
 	// 更新 commitIndex, 如果提交到了大多数服务器，就认为可以提交了
 	rf.updateCommitIndex()
 
@@ -193,7 +193,6 @@ func (r *Raft) updateCommitIndex() {
 
 // Follower 追随者职责
 func Follower(r *Raft) {
-	fmt.Println("Follower: ", r.Id)
 	r.receivedHeatBeat.Store(false)
 	r.receivedVote.Store(false)
 	time.Sleep(time.Duration(rand.Int63()%333+550) * time.Millisecond)
@@ -207,7 +206,6 @@ func Follower(r *Raft) {
 
 // Candidate 候选者职责
 func Candidate(r *Raft) {
-	fmt.Println("Candiate", r.Id)
 	r.receivedHeatBeat.Store(false)
 	r.Lock.Lock()
 	// 开始选举时，任期加1
@@ -335,8 +333,16 @@ func (rf *Raft) sendAppendEntries(server int, request AppendEntriesRequest) {
 // StartListen 开启监听
 func (rf *Raft) StartListen() {
 	// 注册服务
-	rpc.RegisterName("Raft", rf)
-	listener, _ := net.Listen("tcp", rf.Address)
+	err := rpc.RegisterName("Raft", rf)
+	if err != nil {
+		fmt.Println("rpc注册失败:", err)
+		os.Exit(1)
+	}
+	listener, err := net.Listen("tcp", rf.Address)
+	if err != nil {
+		fmt.Println("地址监听失败:", err)
+		os.Exit(1)
+	}
 	go func() {
 		for {
 			conn, _ := listener.Accept()
@@ -406,6 +412,16 @@ func NewRaft() *Raft {
 
 func (rf *Raft) SetAction(f func(r *Raft), state NodeState) {
 	rf.Action = f
+	rf.SetState(state)
+}
+func (rf *Raft) SetState(state NodeState) {
+	if state == LEADER {
+		fmt.Println("LEADER")
+	} else if state == CANDIDATE {
+		fmt.Println("CANDIDATE")
+	} else if state == FOLLOWER {
+		fmt.Println("FOLLOWER")
+	}
 	rf.State = state
 }
 
