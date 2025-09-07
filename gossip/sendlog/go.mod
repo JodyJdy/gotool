@@ -1,4 +1,4 @@
-module node2
+module sendlog
 
 go 1.20
 

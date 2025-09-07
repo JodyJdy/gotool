@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
+	"os"
 	"sync"
 	"time"
 )
@@ -34,6 +35,8 @@ type GossipNode struct {
 	lock sync.Mutex
 	// gossip集群 多播地址
 	MultiCastAddress string
+	// 网卡名称
+	IFaceName string
 	// 当前节点id
 	Id int
 	// 当前节点 暴露rpc服务地址
@@ -52,7 +55,7 @@ type GossipNode struct {
 	MetaData map[string]*Pair
 }
 
-func Server(addressWithPort *AddressWithPort) *net.UDPConn {
+func Server(addressWithPort *AddressWithPort, ifaceName string) *net.UDPConn {
 	ipv4Addr := &net.UDPAddr{IP: addressWithPort.Ip, Port: addressWithPort.Port}
 	conn, err := net.ListenUDP("udp4", ipv4Addr)
 	if err != nil {
@@ -61,12 +64,13 @@ func Server(addressWithPort *AddressWithPort) *net.UDPConn {
 	}
 	pc := ipv4.NewPacketConn(conn)
 	// 根据网卡名称获取网卡
-	iface, err := net.InterfaceByName("以太网")
+	iface, err := net.InterfaceByName(ifaceName)
 	if err != nil {
 		fmt.Printf("找不到网卡 %v\n", err)
 		return nil
 	}
 	if err := pc.JoinGroup(iface, &net.UDPAddr{IP: addressWithPort.Ip}); err != nil {
+		fmt.Println("加入多播组失败:", err)
 		return nil
 	}
 	//服务启动
@@ -75,7 +79,11 @@ func Server(addressWithPort *AddressWithPort) *net.UDPConn {
 
 // StartMembershipListen 打开集群成员消息的监听
 func (g *GossipNode) StartMembershipListen() {
-	conn := Server(Parse(g.MultiCastAddress))
+	conn := Server(Parse(g.MultiCastAddress), g.IFaceName)
+	if conn == nil {
+		fmt.Println("启动失败")
+		os.Exit(1)
+	}
 	go func(con *net.UDPConn) {
 		buf := make([]byte, 1024)
 		for {
@@ -90,7 +98,7 @@ func (g *GossipNode) StartMembershipListen() {
 					g.NodeStatus[node.Id] = time.Now().Second()
 					g.NodeMessage[node.Id] = node
 					g.lock.Unlock()
-					//fmt.Printf("节点%d 接收到节点:%v \n", g.Id, node)
+					//fmt.Printf("节点%d 接收到节点:%v 消息\n", g.Id, node)
 				}
 			}
 		}
@@ -148,10 +156,12 @@ func (g *GossipNode) StartKeepAlive() {
 	fmt.Printf("%d 开启保活\n", g.Id)
 }
 
-func NewGossipNode(id int, rpcAddress string) *GossipNode {
+func NewGossipNode(id int, rpcAddress string, iface string) *GossipNode {
+	fmt.Println(id, rpcAddress)
 	node := new(GossipNode)
 	node.Id = id
 	node.MultiCastAddress = "228.0.0.4:8899"
+	node.IFaceName = iface
 	node.NodeStatus = make(map[int]int)
 	node.NodeMessage = make(map[int]*Node)
 	node.NodeDownTime = 10
@@ -212,7 +222,7 @@ func (g *GossipNode) StartAntiEntrop() {
 						sendNodes = append(sendNodes, nodes[i])
 						count++
 					}
-					if count == g.FanOut {
+					if count == g.FanOut || count >= len(nodes) {
 						break
 					}
 				}

@@ -1,4 +1,4 @@
-module node1
+module test
 
 go 1.20
 
