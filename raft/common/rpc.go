@@ -21,6 +21,10 @@ type RaftRpcClient struct {
 	// 被调用的方法路径
 	Target string
 }
+type AppendLogError struct {
+	Msg           error
+	LeaderAddress string
+}
 
 func (c RaftRpcClient) RequestVote(request RequestVoteRequest, response *RequestVoteResponse) error {
 	return c.Client.Call(c.Target+".RequestVote", request, response)

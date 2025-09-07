@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/gob"
+	"fmt"
 )
 
 // 存放 raft 功能扩展相关的内容
@@ -21,7 +22,7 @@ func init() {
 // AppendLog 追加日志，由客户端调用向Leader节点添加数据
 func (r *Raft) AppendLog(logCommand LogCommand, reply *struct{}) error {
 	if r.State != LEADER {
-		return nil
+		return fmt.Errorf("非Leader节点，无法添加数据,Leader节点是 \"%s\"", r.OtherNodeAddress[r.LeaderId])
 	}
 	r.Lock.Lock()
 	r.Logs = append(r.Logs, LogEntry{
