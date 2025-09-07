@@ -23,6 +23,8 @@ type LogEntry struct {
 	LogCommand interface{}
 }
 type Zab struct {
+	// leaderId 如果是 Follower
+	LeaderId int
 	//  serverId
 	ServerId int
 	//节点状态

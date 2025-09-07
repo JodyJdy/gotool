@@ -33,7 +33,7 @@ func (z *ZabError) Error() string {
 // AddLog 向Leader 添加一个日志
 func (zab *Zab) AddLog(logCommand LogCommand, reply *struct{}) error {
 	if zab.State != LEADER {
-		return nil
+		return fmt.Errorf("非Leader节点，无法添加数据,Leader节点是 \"%s\"", zab.OtherNodeAddress[zab.LeaderId])
 	}
 	if !zab.CouldBroadCast() {
 		fmt.Println("崩溃恢复中，暂停广播")
@@ -46,6 +46,7 @@ func (zab *Zab) AddLog(logCommand LogCommand, reply *struct{}) error {
 		zab.ZxId(), logCommand,
 	}
 	if zab.SendBroadCast(log) {
+		fmt.Println("leader追加日志:", log)
 		//广播成功才追加到日志里面去
 		zab.Logs = append(zab.Logs, log)
 	} else {

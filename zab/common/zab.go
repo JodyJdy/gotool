@@ -153,6 +153,7 @@ func (zab *Zab) Ping(msg PingMsg, response *PingResponse) error {
 		if zab.State == LOOKING {
 			//承认当前领导
 			zab.SetAction(Follower, FOLLOWER)
+			zab.LeaderId = msg.LeaderServerId
 		}
 		//更新节点epoch
 		zab.Epoch = epoch
@@ -468,6 +469,7 @@ func (zab *Zab) CouldBroadCast() bool {
 func (zab *Zab) BroadCast(log AppendLog, result *AppendLogResult) error {
 	zab.LogLock.Lock()
 	if len(log.Entries) > 0 && log.Entries[0].ZxId > zab.LastReceiveZxId {
+		fmt.Println("追加日志:", log)
 		//这里简单直接追加日志
 		zab.Logs = append(zab.Logs, log.Entries...)
 		zab.LastReceiveZxId = log.Entries[len(log.Entries)-1].ZxId

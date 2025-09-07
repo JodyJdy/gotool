@@ -2,9 +2,11 @@ package main
 
 import (
 	"common"
+	"flag"
 	"fmt"
 	"net"
 	"net/rpc"
+	"os"
 	"time"
 )
 
@@ -13,7 +15,13 @@ import (
 测试日志的添加
 */
 func main() {
-	conn, err := net.Dial("tcp", ":1234")
+	leader := flag.String("leader", "", "leader地址")
+	flag.Parse()
+	if *leader == "" {
+		fmt.Println("缺少 leader 地址: -leader")
+		os.Exit(1)
+	}
+	conn, err := net.Dial("tcp", *leader)
 	if err == nil {
 		cli := rpc.NewClient(conn)
 
@@ -24,8 +32,15 @@ func main() {
 
 		for {
 			err := x.AddLog(common.LogCommand{"add", "hello", "world"}, new(struct{}))
-			fmt.Println(err)
+			if err != nil {
+				fmt.Println(err)
+				break
+			} else {
+				fmt.Println("发送消息")
+			}
 			time.Sleep(5 * time.Second)
 		}
+	} else {
+		fmt.Println("连接leader失败:", err)
 	}
 }
