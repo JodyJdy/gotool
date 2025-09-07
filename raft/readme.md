@@ -1,7 +1,7 @@
 # build
 
 ## 1. 构建test
-test.go 可以启动一个zab节点,用于测试zab功能
+test.go 可以启动一个raft节点,用于测试raft功能
 ```shell
 cd test
 
