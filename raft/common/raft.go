@@ -7,7 +7,6 @@ import (
 	"net/rpc"
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -49,7 +48,7 @@ func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteRes
 
 	//2. 如果 votedFor 为空或者为 candidateId，并且候选人的日志至少和自己一样新，那么就投票给他
 	if (rf.VotedFor == -1 || rf.VotedFor == request.CandidateId) && uptoDate {
-		receivedVote.Store(true)
+		rf.receivedVote.Store(true)
 		rf.SetAction(Follower, FOLLOWER)
 		// 投票给请求方
 		response.VoteGranted = true
@@ -62,7 +61,7 @@ func (rf *Raft) RequestVote(request RequestVoteRequest, response *RequestVoteRes
 func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntriesResponse) error {
 	response.Success = false
 	response.NextIndex = 1
-	receivedHeatBeat.Store(true)
+	rf.receivedHeatBeat.Store(true)
 	// 1. 返回假 如果领导人的任期小于接收者的当前任期
 	if request.Term < rf.CurrentTerm {
 		response.Term = rf.CurrentTerm
@@ -125,7 +124,7 @@ func (rf *Raft) AppendEntries(request AppendEntriesRequest, response *AppendEntr
 
 // LeaderFirst 第一次选取为Leader时执行的行为
 func LeaderFirst(r *Raft) {
-	fmt.Println("leader first")
+	fmt.Println("leader first: ", r.Id)
 	r.Lock.Lock()
 	r.NextIndex = make([]int, len(r.OtherNodeAddress))
 	r.MatchIndex = make([]int, len(r.OtherNodeAddress))
@@ -192,20 +191,14 @@ func (r *Raft) updateCommitIndex() {
 	}
 }
 
-// 是否接收到leader的心跳
-var receivedHeatBeat atomic.Bool
-
-// 是否接收到投票请求
-var receivedVote atomic.Bool
-
 // Follower 追随者职责
 func Follower(r *Raft) {
-	fmt.Println("Follower")
-	receivedHeatBeat.Store(false)
-	receivedVote.Store(false)
+	fmt.Println("Follower: ", r.Id)
+	r.receivedHeatBeat.Store(false)
+	r.receivedVote.Store(false)
 	time.Sleep(time.Duration(rand.Int63()%333+550) * time.Millisecond)
 	// 表示没有接收到请求， 转换为 Candidate
-	if !receivedHeatBeat.Load() && !receivedVote.Load() {
+	if !r.receivedHeatBeat.Load() && !r.receivedVote.Load() {
 		r.Lock.Lock()
 		r.SetAction(Candidate, CANDIDATE)
 		r.Lock.Unlock()
@@ -214,8 +207,8 @@ func Follower(r *Raft) {
 
 // Candidate 候选者职责
 func Candidate(r *Raft) {
-	fmt.Println("Candiate")
-	receivedHeatBeat.Store(false)
+	fmt.Println("Candiate", r.Id)
+	r.receivedHeatBeat.Store(false)
 	r.Lock.Lock()
 	// 开始选举时，任期加1
 	r.CurrentTerm++
@@ -246,7 +239,7 @@ func Candidate(r *Raft) {
 		return
 	}
 	// 收到心跳请求，切换为Follower
-	if receivedHeatBeat.Load() && r.State != FOLLOWER {
+	if r.receivedHeatBeat.Load() && r.State != FOLLOWER {
 		r.SetAction(Follower, FOLLOWER)
 	}
 }

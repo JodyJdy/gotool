@@ -69,6 +69,10 @@ type Raft struct {
 
 	// 更改/获取 Raft状态的锁
 	Lock sync.Mutex
+	// 是否接收到leader的心跳
+	receivedHeatBeat atomic.Bool
+	// 是否接收到投票请求
+	receivedVote atomic.Bool
 }
 
 // AppendEntriesRequest 追加条目Rpc调用请求体

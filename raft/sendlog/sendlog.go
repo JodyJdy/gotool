@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	conn, err := net.Dial("tcp", ":1234")
+	conn, err := net.Dial("tcp", ":8000")
 	if err == nil {
 		cli := rpc.NewClient(conn)
 
