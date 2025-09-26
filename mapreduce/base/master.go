@@ -34,7 +34,6 @@ func (m *Master) RegisterWorker(worker Worker, _ *struct{}) error {
 	return nil
 }
 func (m *Master) Hello(_ *struct{}, _ *struct{}) error {
-	fmt.Println("fuck hello")
 	return nil
 }
 
